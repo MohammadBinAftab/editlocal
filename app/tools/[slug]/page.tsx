@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowRight, Check, Film, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { Check, LockKeyhole, ShieldCheck } from 'lucide-react';
 
+import { MediaApp } from '@/components/media-app';
+import type { ToolId } from '@/lib/media-engine';
 import { findSeoTool, getSiteUrl, seoTools, siteName } from '@/lib/site';
 
 type ToolPageProps = { params: Promise<{ slug: string }> };
@@ -26,8 +28,9 @@ export async function generateMetadata({ params }: ToolPageProps): Promise<Metad
       siteName,
       title: tool.title,
       description: tool.description,
+      images: [],
     },
-    twitter: { card: 'summary', title: tool.title, description: tool.description },
+    twitter: { card: 'summary', title: tool.title, description: tool.description, images: [] },
   };
 }
 
@@ -74,25 +77,20 @@ export default async function ToolPage({ params }: ToolPageProps) {
   };
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbData).replace(/</g, '\\u003c') }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData).replace(/</g, '\\u003c') }} />
 
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex h-16 max-w-6xl items-center px-5">
-          <Link href="/" className="flex items-center gap-2.5 font-bold tracking-[-0.03em]"><span className="grid size-8 place-items-center rounded-xl bg-primary text-primary-foreground"><Film className="size-4" /></span>EditLocal</Link>
-          <nav className="ml-auto flex items-center gap-5 text-sm text-muted-foreground"><Link href="/tools" className="hover:text-foreground">All tools</Link><Link href="/privacy" className="hover:text-foreground">Privacy</Link></nav>
-        </div>
-      </header>
+      <MediaApp key={tool.toolId} initialTool={tool.toolId as ToolId} focused />
 
+      <main className="min-h-screen border-t border-border bg-background text-foreground">
       <article className="mx-auto max-w-4xl px-5 py-12 sm:py-16">
         <nav aria-label="Breadcrumb" className="mb-5 text-xs text-muted-foreground"><Link href="/">EditLocal</Link> <span className="mx-2">/</span> <Link href="/tools">Tools</Link> <span className="mx-2">/</span> {tool.name}</nav>
         <div className="rounded-[28px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-white p-7 sm:p-11">
           <div className="mb-5 flex flex-wrap gap-2"><span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">Free forever</span><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">No file upload</span><span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold">No watermark</span></div>
           <h1 className="max-w-3xl text-[2rem] font-bold leading-[1.08] tracking-[-0.05em] sm:text-5xl">{tool.title.replace(/ — /g, '. ')}</h1>
           <p className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg">{tool.answer}</p>
-          <Link href={`/?tool=${tool.toolId}`} className="mt-7 inline-flex h-11 items-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-700">Open {tool.name}<ArrowRight className="size-4" /></Link>
         </div>
 
         <section className="mt-12 grid gap-8 md:grid-cols-2">
@@ -128,6 +126,7 @@ export default async function ToolPage({ params }: ToolPageProps) {
           <div className="mt-5 grid gap-3 sm:grid-cols-2">{related.map((item) => <Link key={item.slug} href={`/tools/${item.slug}`} className="rounded-xl border border-border bg-card p-4 text-sm font-semibold transition hover:border-violet-300 hover:bg-violet-50">{item.name}<span className="mt-1 block text-xs font-normal text-muted-foreground">{item.description}</span></Link>)}</div>
         </section>
       </article>
-    </main>
+      </main>
+    </>
   );
 }
