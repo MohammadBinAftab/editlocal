@@ -6,7 +6,7 @@ Every tool and quality setting is free and unlocked. There are no subscriptions,
 
 ## Start locally
 
-Requirements: Node.js 22.13 or newer.
+Requirements: Node.js 22.
 
 ```powershell
 npm install
@@ -52,6 +52,18 @@ npm run build
 4. Submit `https://your-domain.example/sitemap.xml` in Google Search Console and request indexing for the home page and key tool pages.
 
 The generated robots file, sitemap, canonical URLs, per-tool metadata, internal links, and structured data all use `NEXT_PUBLIC_SITE_URL`. Search engines ultimately control crawling, indexing, and ranking, so no position can be guaranteed.
+
+## Vercel deployment settings
+
+Vercel should detect this repository as a native Next.js project. Use these project settings:
+
+- Framework Preset: **Next.js**
+- Build Command: **npm run build** (or leave it at the framework default)
+- Output Directory: **leave blank** (Next.js manages `.next`)
+- Install Command: **npm install** (or leave it at the framework default)
+- Node.js Version: **22.x**
+
+Do not set `dist/client` as the Output Directory. That path belonged to the earlier Vinext build and makes a native Next.js deployment fail after the build completes. For public indexing, turn off Vercel Authentication for the Production environment under **Settings → Deployment Protection**; otherwise visitors and search crawlers are redirected to a Vercel login page.
 
 ## Measuring search rankings
 

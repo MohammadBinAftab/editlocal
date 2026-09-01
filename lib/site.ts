@@ -2,7 +2,18 @@ export const siteName = 'EditLocal';
 export const siteTagline = 'Free video and photo tools that never upload your files';
 
 export function getSiteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    process.env.VERCEL_URL;
+
+  if (!configuredUrl) return 'http://localhost:3000';
+
+  const absoluteUrl = /^https?:\/\//i.test(configuredUrl)
+    ? configuredUrl
+    : `https://${configuredUrl}`;
+
+  return absoluteUrl.replace(/\/$/, '');
 }
 
 export type SeoTool = {
