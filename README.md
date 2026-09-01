@@ -22,6 +22,9 @@ You can also run `./start-editlocal.ps1` from PowerShell. It installs dependenci
 - Motion-and-detail smart reframing for 9:16, 16:9, 1:1, and 4:5
 - Background fill and full-frame fit modes
 - Video compression, conversion, trim, crop, merge, speed, audio extraction, and GIF creation
+- Green-screen removal with transparent or solid-color output
+- Recorded or uploaded voiceovers with zero-loss video stream copying when compatible
+- Multiple timed text captions with mobile-friendly styling controls
 - Image compression, conversion, resizing, cropping, and visible-overlay cleanup
 - Authorized visible-watermark cleanup for video and photos
 - Fast, High, and Maximum quality settings, all included for everyone

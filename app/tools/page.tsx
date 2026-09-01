@@ -6,7 +6,7 @@ import { seoTools } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Free Video and Photo Tools — No Upload',
-  description: 'Browse free tools to reframe, compress, convert, trim, crop, merge, and clean videos and images locally without uploads, accounts, or watermarks.',
+  description: 'Browse free tools to reframe, caption, add voiceovers, remove green screens, compress, convert, crop, merge, and clean media locally.',
   alternates: { canonical: '/tools' },
 };
 

@@ -10,6 +10,9 @@ export type ToolId =
   | 'speed'
   | 'audio'
   | 'gif'
+  | 'greenscreen'
+  | 'voiceover'
+  | 'captions'
   | 'watermark'
   | 'photo-compress'
   | 'photo-convert'
@@ -18,6 +21,7 @@ export type ToolId =
   | 'photo-watermark';
 
 export type FocusPoint = { time: number; x: number; y: number };
+export type CaptionCue = { text: string; start: number; end: number };
 
 export type ProcessOptions = {
   tool: ToolId;
@@ -37,6 +41,15 @@ export type ProcessOptions = {
   focusX: number;
   focusY: number;
   focusPath?: FocusPoint[];
+  greenKeyColor: string;
+  greenSimilarity: number;
+  greenBlend: number;
+  greenOutput: 'transparent' | 'color';
+  greenBackground: string;
+  voiceoverMode: 'replace' | 'mix';
+  voiceoverVolume: number;
+  originalVolume: number;
+  captionCues: CaptionCue[];
 };
 
 export type ProcessResult = {
@@ -145,6 +158,10 @@ function outputName(input: File, suffix: string, extension: string) {
   return `${base}-${suffix}.${extension}`;
 }
 
+function ffmpegColor(color: string, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(color) ? `0x${color.slice(1)}` : fallback;
+}
+
 export async function processMedia(
   files: File[],
   options: ProcessOptions,
@@ -158,6 +175,7 @@ export async function processMedia(
   let extension = 'mp4';
   let suffix: string = options.tool;
   let args: string[] = [];
+  let fallbackArgs: string[] | null = null;
 
   try {
     for (let index = 0; index < files.length; index += 1) {
@@ -185,6 +203,49 @@ export async function processMedia(
       output = 'output.gif';
       args = ['-i', input, '-vf', 'fps=12,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', '-loop', '0', output];
       suffix = 'clip';
+    } else if (options.tool === 'greenscreen') {
+      const key = ffmpegColor(options.greenKeyColor, '0x00FF00');
+      const chroma = `chromakey=${key}:${options.greenSimilarity.toFixed(3)}:${options.greenBlend.toFixed(3)}`;
+      suffix = 'greenscreen';
+      if (options.greenOutput === 'transparent') {
+        extension = 'webm';
+        output = 'output.webm';
+        args = ['-i', input, '-vf', `${chroma},format=yuva420p`, '-c:v', 'libvpx-vp9', '-crf', options.quality === 'Fast' ? '36' : options.quality === 'Studio' ? '18' : '26', '-b:v', '0', '-pix_fmt', 'yuva420p', '-c:a', 'libopus', output];
+      } else {
+        const background = ffmpegColor(options.greenBackground, '0x111111');
+        const width = Math.max(2, Math.round(options.sourceWidth / 2) * 2);
+        const height = Math.max(2, Math.round(options.sourceHeight / 2) * 2);
+        args = ['-i', input, '-f', 'lavfi', '-i', `color=c=${background}:s=${width}x${height}:r=30`, '-filter_complex', `[0:v]${chroma},format=rgba[subject];[1:v][subject]overlay=shortest=1:format=auto,format=yuv420p[v]`, '-map', '[v]', '-map', '0:a?', ...codecArgs('mp4', options.quality), '-shortest', output];
+      }
+    } else if (options.tool === 'voiceover') {
+      if (!written[1]) throw new Error('Add or record a voiceover audio track first.');
+      const webmSource = safeExtension(files[0]) === 'webm';
+      extension = webmSource ? 'webm' : 'mp4';
+      output = `output.${extension}`;
+      const copyCodecs = ['-c:v', 'copy', '-c:a', webmSource ? 'libopus' : 'aac', '-b:a', '192k'];
+      const encodedCodecs = codecArgs(extension, options.quality);
+      suffix = 'voiceover';
+      if (options.voiceoverMode === 'mix') {
+        const base = ['-i', input, '-i', written[1], '-filter_complex', `[0:a]volume=${options.originalVolume.toFixed(2)}[original];[1:a]volume=${options.voiceoverVolume.toFixed(2)}[voice];[original][voice]amix=inputs=2:duration=first:dropout_transition=2[a]`, '-map', '0:v:0', '-map', '[a]'];
+        args = [...base, ...copyCodecs, '-shortest', output];
+        fallbackArgs = [...base, ...encodedCodecs, '-shortest', output];
+      } else {
+        const base = ['-i', input, '-i', written[1], '-map', '0:v:0', '-map', '1:a:0'];
+        args = [...base, ...copyCodecs, '-shortest', output];
+        fallbackArgs = [...base, ...encodedCodecs, '-shortest', output];
+      }
+    } else if (options.tool === 'captions') {
+      if (!written[1] || !options.captionCues.length) throw new Error('Add at least one caption first.');
+      const captionInputs = written.slice(1).flatMap((name) => ['-loop', '1', '-i', name]);
+      const filters: string[] = [];
+      let base = '0:v';
+      options.captionCues.forEach((cue, index) => {
+        const outputLabel = `captioned${index}`;
+        filters.push(`[${base}][${index + 1}:v]overlay=0:0:enable='between(t,${Math.max(0, cue.start).toFixed(3)},${Math.max(cue.start + 0.1, cue.end).toFixed(3)})':eof_action=repeat:shortest=1[${outputLabel}]`);
+        base = outputLabel;
+      });
+      suffix = 'captioned';
+      args = ['-i', input, ...captionInputs, '-filter_complex', filters.join(';'), '-map', `[${base}]`, '-map', '0:a?', ...codecArgs('mp4', options.quality), '-shortest', output];
     } else if (imageTool) {
       extension = options.format === 'Original' ? (safeExtension(files[0]) === 'jpeg' ? 'jpg' : safeExtension(files[0])) : options.format.toLowerCase();
       if (!['png', 'jpg', 'jpeg', 'webp'].includes(extension)) extension = 'jpg';
@@ -227,7 +288,11 @@ export async function processMedia(
       args = [...beforeInput, '-i', input, ...afterInput, ...codecArgs(extension, options.quality), output];
     }
 
-    const exitCode = await engine.exec(args);
+    let exitCode = await engine.exec(args);
+    if (exitCode !== 0 && fallbackArgs) {
+      try { await engine.deleteFile(output); } catch { /* The first attempt may not have created output. */ }
+      exitCode = await engine.exec(fallbackArgs);
+    }
     if (exitCode !== 0) throw new Error('The local media engine could not complete this combination of settings.');
     const data = await engine.readFile(output);
     const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data);

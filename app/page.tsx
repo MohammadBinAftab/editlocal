@@ -9,6 +9,7 @@ import {
   ArrowRight,
   AudioLines,
   BadgeCheck,
+  Captions,
   Check,
   CircleX,
   Crop,
@@ -20,6 +21,7 @@ import {
   LockKeyhole,
   Maximize2,
   Menu,
+  Mic2,
   Music2,
   Pause,
   Play,
@@ -38,7 +40,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress, ProgressLabel } from '@/components/ui/progress';
 import { analyzeVideoFocus } from '@/lib/focus-analysis';
-import type { ProcessResult, ToolId } from '@/lib/media-engine';
+import type { CaptionCue, ProcessResult, ToolId } from '@/lib/media-engine';
+
+type EditableCaption = CaptionCue & { id: number };
 
 type ToolDefinition = {
   id: ToolId;
@@ -60,6 +64,9 @@ const tools: ToolDefinition[] = [
   { id: 'speed', label: 'Change speed', description: 'Speed up or slow down video and audio together.', icon: Gauge, category: 'Video' },
   { id: 'audio', label: 'Extract audio', description: 'Save clean MP3 audio from a video.', icon: Music2, category: 'Video' },
   { id: 'gif', label: 'Video to GIF', description: 'Create a smooth looping GIF for sharing.', icon: Play, category: 'Video' },
+  { id: 'greenscreen', label: 'Greenscreen', description: 'Key out a green background with edge feathering and spill control.', icon: Sparkles, category: 'Video', pro: true },
+  { id: 'voiceover', label: 'Voiceover', description: 'Record or add narration and mix it with the original audio.', icon: Mic2, category: 'Video', pro: true },
+  { id: 'captions', label: 'Add captions', description: 'Burn timed, readable text captions directly onto a video.', icon: Captions, category: 'Video', pro: true },
   { id: 'watermark', label: 'Watermark cleanup', description: 'Remove an authorized visible overlay with local reconstruction.', icon: WandSparkles, category: 'Video', pro: true },
   { id: 'photo-compress', label: 'Compress image', description: 'Reduce image size with a high-quality local encoder.', icon: Aperture, category: 'Photo' },
   { id: 'photo-convert', label: 'Convert image', description: 'Convert JPG, PNG or WebP without an upload.', icon: FileImage, category: 'Photo' },
@@ -87,6 +94,9 @@ const toolSlugs: Record<ToolId, string> = {
   speed: 'change-video-speed',
   audio: 'extract-audio-from-video',
   gif: 'video-to-gif',
+  greenscreen: 'remove-green-screen-from-video',
+  voiceover: 'add-voiceover-to-video',
+  captions: 'add-captions-to-video',
   watermark: 'remove-watermark-from-video',
   'photo-compress': 'compress-image',
   'photo-convert': 'convert-image',
@@ -102,7 +112,11 @@ const formatSize = (bytes: number) => {
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const voiceoverInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
   const [activeTool, setActiveTool] = useState<ToolId>('reframe');
   const [files, setFiles] = useState<File[]>([]);
   const [sourceUrl, setSourceUrl] = useState('');
@@ -124,6 +138,21 @@ export default function Home() {
   const [focusY, setFocusY] = useState(0.5);
   const [cleanupRect, setCleanupRect] = useState(cornerPresets[3].value);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [greenKeyColor, setGreenKeyColor] = useState('#00ff00');
+  const [greenSimilarity, setGreenSimilarity] = useState(0.2);
+  const [greenBlend, setGreenBlend] = useState(0.08);
+  const [greenOutput, setGreenOutput] = useState<'transparent' | 'color'>('transparent');
+  const [greenBackground, setGreenBackground] = useState('#17131f');
+  const [voiceoverFile, setVoiceoverFile] = useState<File | null>(null);
+  const [voiceoverMode, setVoiceoverMode] = useState<'replace' | 'mix'>('replace');
+  const [voiceoverVolume, setVoiceoverVolume] = useState(1);
+  const [originalVolume, setOriginalVolume] = useState(0.35);
+  const [recording, setRecording] = useState(false);
+  const [captionCues, setCaptionCues] = useState<EditableCaption[]>([{ id: 1, text: 'Your caption', start: 0, end: 3 }]);
+  const [captionPosition, setCaptionPosition] = useState<'top' | 'center' | 'bottom'>('bottom');
+  const [captionColor, setCaptionColor] = useState('#ffffff');
+  const [captionFontSize, setCaptionFontSize] = useState(5.2);
+  const [captionBoxOpacity, setCaptionBoxOpacity] = useState(0.62);
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'processing' | 'done' | 'error'>('idle');
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
@@ -187,6 +216,7 @@ export default function Home() {
     return () => {
       if (sourceUrl) URL.revokeObjectURL(sourceUrl);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, [sourceUrl, resultUrl]);
 
@@ -228,6 +258,40 @@ export default function Home() {
     setStatusText(accepted[0].size > 750 * 1024 * 1024 ? 'Large file: keep this tab open and close other memory-heavy apps.' : '');
   };
 
+  const startVoiceoverRecording = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('Microphone recording is not supported in this browser. Upload an audio file instead.');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const recorder = new MediaRecorder(stream);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) recordingChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        setVoiceoverFile(new File([blob], `voiceover-${Date.now()}.webm`, { type: blob.type }));
+        stream.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+        setRecording(false);
+      };
+      recorder.start(250);
+      setRecording(true);
+      setStatus('idle');
+      setStatusText('Recording locally. Nothing is uploaded.');
+    } catch (error) {
+      setStatus('error');
+      setStatusText(error instanceof Error ? error.message : 'Microphone access could not be started.');
+    }
+  };
+
+  const stopVoiceoverRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+  };
+
+  const updateCaption = (id: number, patch: Partial<EditableCaption>) => {
+    setCaptionCues((cues) => cues.map((cue) => cue.id === id ? { ...cue, ...patch } : cue));
+  };
+
   const runProcess = async () => {
     if (!files.length) {
       inputRef.current?.click();
@@ -236,6 +300,17 @@ export default function Home() {
     if (isCleanup && !rightsConfirmed) {
       setStatus('error');
       setStatusText('Confirm that you own or are authorized to edit this media.');
+      return;
+    }
+    if (activeTool === 'voiceover' && !voiceoverFile) {
+      setStatus('error');
+      setStatusText('Record a voiceover or choose an audio file first.');
+      return;
+    }
+    const validCaptions = captionCues.filter((cue) => cue.text.trim() && cue.end > cue.start);
+    if (activeTool === 'captions' && !validCaptions.length) {
+      setStatus('error');
+      setStatusText('Add at least one caption with valid start and end times.');
       return;
     }
 
@@ -261,9 +336,23 @@ export default function Home() {
       setStatus('processing');
       setProgress(0);
       setStatusText('Loading the private engine and rendering locally…');
+      let processingFiles = files;
+      if (activeTool === 'voiceover' && voiceoverFile) processingFiles = [files[0], voiceoverFile];
+      if (activeTool === 'captions') {
+        const { renderCaptionOverlay } = await import('@/lib/caption-overlay');
+        const overlays = await Promise.all(validCaptions.map((cue, index) => renderCaptionOverlay(cue.text, {
+          width: sourceWidth,
+          height: sourceHeight,
+          position: captionPosition,
+          color: captionColor,
+          fontSize: captionFontSize,
+          boxOpacity: captionBoxOpacity,
+        }, index)));
+        processingFiles = [files[0], ...overlays];
+      }
       const { processMedia } = await import('@/lib/media-engine');
       const processed = await processMedia(
-        files,
+        processingFiles,
         {
           tool: activeTool,
           ratio,
@@ -282,6 +371,15 @@ export default function Home() {
           focusX,
           focusY,
           focusPath,
+          greenKeyColor,
+          greenSimilarity,
+          greenBlend,
+          greenOutput,
+          greenBackground,
+          voiceoverMode,
+          voiceoverVolume,
+          originalVolume,
+          captionCues: validCaptions,
         },
         setProgress,
       );
@@ -313,7 +411,7 @@ export default function Home() {
     anchor.click();
   };
 
-  const actionLabel = activeTool === 'reframe' ? 'Analyze & reframe' : activeTool.includes('watermark') ? 'Clean selected area' : `Run ${tool.label.toLowerCase()}`;
+  const actionLabel = activeTool === 'reframe' ? 'Analyze & reframe' : activeTool.includes('watermark') ? 'Clean selected area' : activeTool === 'greenscreen' ? 'Remove green screen' : activeTool === 'voiceover' ? 'Add voiceover' : activeTool === 'captions' ? 'Burn captions into video' : `Run ${tool.label.toLowerCase()}`;
   const previewIsImage = result ? result.mimeType.startsWith('image/') : isPhoto;
   const previewUrl = resultUrl || sourceUrl;
 
@@ -431,7 +529,7 @@ export default function Home() {
                 <Search className="size-4 text-violet-700" /><span className="flex-1 text-sm font-semibold">Search Tools</span><kbd className="rounded-md border border-border bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">Ctrl K</kbd>
               </button>
             </div>
-            <p className="mt-5 max-w-4xl text-sm leading-7 text-muted-foreground sm:text-base">Edit, reframe, merge, trim, compress, crop, and convert videos and photos instantly in your browser. <strong className="font-semibold text-foreground">100% free, no watermark, no sign-up required</strong> — your files never leave your device. Works offline after the first load; the editing engine is cached after its first use.</p>
+            <p className="mt-5 max-w-4xl text-sm leading-7 text-muted-foreground sm:text-base">Edit, reframe, caption, add voiceovers, remove green screens, merge, trim, compress, crop, and convert videos and photos instantly in your browser. <strong className="font-semibold text-foreground">100% free, no watermark, no sign-up required</strong> — your files never leave your device. Works offline after the first load; the editing engine is cached after its first use.</p>
             <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-semibold"><span className="rounded-full bg-white px-3 py-1.5 text-emerald-700 shadow-sm">15 tools unlocked</span><span className="rounded-full bg-white px-3 py-1.5 text-violet-700 shadow-sm">Local processing</span><span className="rounded-full bg-white px-3 py-1.5 text-foreground shadow-sm">No artificial limits</span></div>
           </section>
 
@@ -510,6 +608,7 @@ export default function Home() {
                 {showTargetFrame && previewUrl && <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-35">{Array.from({ length: 9 }).map((_, index) => <span key={index} className="border-[.5px] border-white/40" />)}</div>}
                 {activeTool === 'reframe' && previewUrl && framing === 'Smart reframe' && !resultUrl && <span className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-violet-500 shadow-lg" style={{ left: `${focusX * 100}%`, top: `${focusY * 100}%` }} />}
                 {isCleanup && previewUrl && !resultUrl && <div className="pointer-events-none absolute border-2 border-dashed border-rose-400 bg-rose-400/15 shadow-[0_0_0_9999px_rgba(0,0,0,.08)]" style={{ left: `${cleanupRect.x * 100}%`, top: `${cleanupRect.y * 100}%`, width: `${cleanupRect.width * 100}%`, height: `${cleanupRect.height * 100}%` }} />}
+                {activeTool === 'captions' && previewUrl && !resultUrl && captionCues[0]?.text.trim() && <div className={`pointer-events-none absolute left-1/2 w-[86%] -translate-x-1/2 text-center ${captionPosition === 'top' ? 'top-[10%]' : captionPosition === 'center' ? 'top-1/2 -translate-y-1/2' : 'bottom-[10%]'}`}><span className="inline rounded-md px-2 py-1 font-bold leading-relaxed shadow-lg" style={{ color: captionColor, backgroundColor: `rgba(0,0,0,${captionBoxOpacity})`, fontSize: `${Math.max(12, captionFontSize * 3)}px` }}>{captionCues[0].text}</span></div>}
               </div>
 
               <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between text-[11px] text-white/55 sm:bottom-5 sm:left-5 sm:right-5 sm:text-xs">
@@ -564,6 +663,43 @@ export default function Home() {
                   <input type="range" min="0.5" max="2" step="0.05" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} className="mt-4 w-full accent-violet-600" />
                   <span className="mt-1 flex justify-between text-[10px] font-normal normal-case tracking-normal text-muted-foreground"><span>0.5×</span><span>Normal</span><span>2×</span></span>
                 </label>}
+
+                {activeTool === 'greenscreen' && <fieldset>
+                  <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Chroma key</legend>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="rounded-xl border border-border bg-background p-3 text-xs font-medium">Key color<input aria-label="Green screen key color" type="color" value={greenKeyColor} onChange={(event) => setGreenKeyColor(event.target.value)} className="mt-2 h-9 w-full cursor-pointer rounded-lg border-0 bg-transparent" /></label>
+                    <label className="rounded-xl border border-border bg-background p-3 text-xs font-medium">Output<select value={greenOutput} onChange={(event) => setGreenOutput(event.target.value as 'transparent' | 'color')} className="mt-2 h-9 w-full rounded-lg border border-border bg-background px-2 text-xs"><option value="transparent">Transparent WebM</option><option value="color">Solid background MP4</option></select></label>
+                  </div>
+                  {greenOutput === 'color' && <label className="mt-3 flex items-center justify-between rounded-xl border border-border p-3 text-xs font-medium">Background color<input aria-label="Replacement background color" type="color" value={greenBackground} onChange={(event) => setGreenBackground(event.target.value)} className="h-8 w-14 cursor-pointer rounded border-0 bg-transparent" /></label>}
+                  <label className="mt-4 block text-xs font-medium">Key tolerance <span className="float-right text-muted-foreground">{Math.round(greenSimilarity * 100)}%</span><input type="range" min="0.05" max="0.45" step="0.01" value={greenSimilarity} onChange={(event) => setGreenSimilarity(Number(event.target.value))} className="mt-2 w-full accent-violet-600" /></label>
+                  <label className="mt-4 block text-xs font-medium">Edge feather <span className="float-right text-muted-foreground">{Math.round(greenBlend * 100)}%</span><input type="range" min="0" max="0.25" step="0.01" value={greenBlend} onChange={(event) => setGreenBlend(Number(event.target.value))} className="mt-2 w-full accent-violet-600" /></label>
+                  <p className="mt-3 text-[11px] leading-5 text-muted-foreground">Start with a lower tolerance, then increase it until green spill disappears. Edge feather softens hair and motion boundaries.</p>
+                </fieldset>}
+
+                {activeTool === 'voiceover' && <fieldset>
+                  <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Narration track</legend>
+                  <input ref={voiceoverInputRef} type="file" accept="audio/*" className="sr-only" onChange={(event) => setVoiceoverFile(event.target.files?.[0] ?? null)} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={() => voiceoverInputRef.current?.click()}><Upload /> Choose audio</Button>
+                    {recording ? <Button type="button" variant="outline" className="h-11 rounded-xl border-rose-200 text-rose-700" onClick={stopVoiceoverRecording}><Pause /> Stop recording</Button> : <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={startVoiceoverRecording}><Mic2 /> Record here</Button>}
+                  </div>
+                  <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3 text-xs"><span className="font-semibold">{recording ? 'Recording…' : voiceoverFile ? voiceoverFile.name : 'No voiceover selected'}</span>{voiceoverFile && !recording && <span className="mt-1 block text-muted-foreground">{formatSize(voiceoverFile.size)} · stored only in this tab</span>}</div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">{(['replace', 'mix'] as const).map((value) => <button key={value} type="button" onClick={() => setVoiceoverMode(value)} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${voiceoverMode === value ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-border'}`}>{value === 'replace' ? 'Replace audio' : 'Mix together'}</button>)}</div>
+                  {voiceoverMode === 'mix' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-xs font-medium">Original audio <span className="float-right text-muted-foreground">{Math.round(originalVolume * 100)}%</span><input type="range" min="0" max="1.5" step="0.05" value={originalVolume} onChange={(event) => setOriginalVolume(Number(event.target.value))} className="mt-2 w-full accent-violet-600" /></label><label className="text-xs font-medium">Voiceover <span className="float-right text-muted-foreground">{Math.round(voiceoverVolume * 100)}%</span><input type="range" min="0" max="2" step="0.05" value={voiceoverVolume} onChange={(event) => setVoiceoverVolume(Number(event.target.value))} className="mt-2 w-full accent-violet-600" /></label></div>}
+                </fieldset>}
+
+                {activeTool === 'captions' && <fieldset>
+                  <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Timed captions</legend>
+                  <div className="space-y-3">{captionCues.map((cue, index) => <div key={cue.id} className="rounded-xl border border-border bg-background p-3">
+                    <div className="mb-2 flex items-center justify-between"><span className="text-xs font-bold">Caption {index + 1}</span>{captionCues.length > 1 && <button type="button" onClick={() => setCaptionCues((cues) => cues.filter((item) => item.id !== cue.id))} className="rounded-md px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50">Remove</button>}</div>
+                    <textarea value={cue.text} onChange={(event) => updateCaption(cue.id, { text: event.target.value })} rows={2} maxLength={180} placeholder="Type caption text" className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-300" />
+                    <div className="mt-2 grid grid-cols-2 gap-2"><label className="text-[11px] text-muted-foreground">Start (seconds)<input type="number" min="0" step="0.1" value={cue.start} onChange={(event) => updateCaption(cue.id, { start: Number(event.target.value) })} className="mt-1 h-9 w-full rounded-lg border border-border px-2 text-xs text-foreground" /></label><label className="text-[11px] text-muted-foreground">End (seconds)<input type="number" min={cue.start + 0.1} step="0.1" value={cue.end} onChange={(event) => updateCaption(cue.id, { end: Number(event.target.value) })} className="mt-1 h-9 w-full rounded-lg border border-border px-2 text-xs text-foreground" /></label></div>
+                  </div>)}</div>
+                  <Button type="button" variant="outline" className="mt-3 h-10 w-full rounded-xl" disabled={captionCues.length >= 8} onClick={() => setCaptionCues((cues) => [...cues, { id: Math.max(0, ...cues.map((cue) => cue.id)) + 1, text: '', start: Number((cues.at(-1)?.end ?? 0).toFixed(1)), end: Number(((cues.at(-1)?.end ?? 0) + 3).toFixed(1)) }])}>Add another caption</Button>
+                  <div className="mt-4 grid grid-cols-3 gap-2">{(['top', 'center', 'bottom'] as const).map((value) => <button key={value} type="button" onClick={() => setCaptionPosition(value)} className={`rounded-xl border px-2 py-2 text-xs font-semibold capitalize ${captionPosition === value ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-border'}`}>{value}</button>)}</div>
+                  <div className="mt-4 grid grid-cols-2 gap-4"><label className="text-xs font-medium">Text color<input aria-label="Caption text color" type="color" value={captionColor} onChange={(event) => setCaptionColor(event.target.value)} className="mt-2 h-8 w-full cursor-pointer rounded border-0 bg-transparent" /></label><label className="text-xs font-medium">Text size <span className="float-right text-muted-foreground">{captionFontSize.toFixed(1)}%</span><input type="range" min="3" max="9" step="0.2" value={captionFontSize} onChange={(event) => setCaptionFontSize(Number(event.target.value))} className="mt-3 w-full accent-violet-600" /></label></div>
+                  <label className="mt-4 block text-xs font-medium">Background opacity <span className="float-right text-muted-foreground">{Math.round(captionBoxOpacity * 100)}%</span><input type="range" min="0" max="0.9" step="0.05" value={captionBoxOpacity} onChange={(event) => setCaptionBoxOpacity(Number(event.target.value))} className="mt-2 w-full accent-violet-600" /></label>
+                </fieldset>}
 
                 {activeTool === 'photo-resize' && <fieldset>
                   <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Exact size</legend>
