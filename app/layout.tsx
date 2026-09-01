@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
   title: { default: 'EditLocal — Free Video & Photo Tools, No Upload', template: '%s | EditLocal' },
-  description: 'Free browser tools to reframe, compress, convert, trim, crop, merge, and clean videos and photos locally. No uploads, accounts, paid plans, or watermarks.',
+  description: 'Free online video and photo editor without watermark. Reframe, compress, convert, trim, crop, merge, and clean media locally with no upload or sign-up.',
   keywords: ['free video tools', 'private video editor', 'video aspect ratio converter', 'compress video', 'convert video to MP4', 'local image tools'],
   authors: [{ name: 'EditLocal' }],
   creator: 'EditLocal',

@@ -30,6 +30,7 @@
     "dist/**",
     "coverage/**",
     "public/ffmpeg/**",
+    "public/sw.js",
     "next-env.d.ts"
   ],
   "rules": {

@@ -25,6 +25,7 @@ import {
   Play,
   RefreshCw,
   ScanSearch,
+  Search,
   Scissors,
   ShieldCheck,
   Sparkles,
@@ -76,6 +77,24 @@ const cornerPresets = [
   { label: 'Bottom right', value: { x: 0.77, y: 0.87, width: 0.2, height: 0.1 } },
 ];
 
+const toolSlugs: Record<ToolId, string> = {
+  reframe: 'video-aspect-ratio-converter',
+  compress: 'compress-video',
+  convert: 'convert-video',
+  trim: 'trim-video',
+  crop: 'crop-video',
+  merge: 'merge-videos',
+  speed: 'change-video-speed',
+  audio: 'extract-audio-from-video',
+  gif: 'video-to-gif',
+  watermark: 'remove-watermark-from-video',
+  'photo-compress': 'compress-image',
+  'photo-convert': 'convert-image',
+  'photo-resize': 'resize-image',
+  'photo-crop': 'crop-image',
+  'photo-watermark': 'remove-watermark-from-image',
+};
+
 const formatSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / 1024 / 1024).toFixed(bytes > 100 * 1024 * 1024 ? 0 : 1)} MB`;
@@ -83,6 +102,7 @@ const formatSize = (bytes: number) => {
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeTool, setActiveTool] = useState<ToolId>('reframe');
   const [files, setFiles] = useState<File[]>([]);
   const [sourceUrl, setSourceUrl] = useState('');
@@ -108,6 +128,8 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [toolSearchOpen, setToolSearchOpen] = useState(false);
+  const [toolQuery, setToolQuery] = useState('');
 
   const tool = useMemo(() => tools.find((item) => item.id === activeTool) ?? tools[0], [activeTool]);
   const isPhoto = tool.category === 'Photo';
@@ -115,6 +137,11 @@ export default function Home() {
   const showRatio = activeTool === 'reframe' || activeTool === 'crop' || activeTool === 'photo-crop';
   const showTargetFrame = showRatio;
   const busy = status === 'analyzing' || status === 'processing';
+  const filteredTools = useMemo(() => {
+    const query = toolQuery.trim().toLowerCase();
+    if (!query) return tools;
+    return tools.filter((item) => `${item.label} ${item.description} ${item.category}`.toLowerCase().includes(query));
+  }, [toolQuery]);
 
   useEffect(() => {
     const requestedTool = new URLSearchParams(window.location.search).get('tool') as ToolId | null;
@@ -123,6 +150,37 @@ export default function Home() {
       setActiveTool(matchedTool.id);
       setFormat(matchedTool.category === 'Photo' ? 'JPG' : 'MP4');
     });
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setToolSearchOpen(true);
+      }
+      if (event.key === 'Escape') setToolSearchOpen(false);
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (toolSearchOpen) requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [toolSearchOpen]);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const registerOfflineSupport = () => {
+      void navigator.serviceWorker.register('/sw.js').then(async (registration) => {
+        await navigator.serviceWorker.ready;
+        const urls = performance.getEntriesByType('resource')
+          .map((entry) => entry.name)
+          .filter((url) => url.startsWith(window.location.origin));
+        registration.active?.postMessage({ type: 'CACHE_URLS', urls });
+      }).catch(() => undefined);
+    };
+    window.addEventListener('load', registerOfflineSupport, { once: true });
+    return () => window.removeEventListener('load', registerOfflineSupport);
   }, []);
 
   useEffect(() => {
@@ -148,6 +206,13 @@ export default function Home() {
     }
     setFormat(next.category === 'Photo' ? 'JPG' : 'MP4');
     setMobileToolsOpen(false);
+  };
+
+  const openTool = (id: ToolId) => {
+    chooseTool(id);
+    setToolSearchOpen(false);
+    setToolQuery('');
+    requestAnimationFrame(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   const onFiles = (selected: File[]) => {
@@ -280,6 +345,28 @@ export default function Home() {
         </div>
       </header>
 
+      {toolSearchOpen && (
+        <dialog open className="fixed inset-0 z-[70] m-0 grid h-full max-h-none w-full max-w-none place-items-start border-0 bg-black/45 px-3 pt-[9vh] backdrop-blur-sm sm:px-5" aria-label="Search EditLocal tools">
+          <button className="absolute inset-0 cursor-default" aria-label="Close tool search" onClick={() => setToolSearchOpen(false)} />
+          <div className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-white/20 bg-background shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-border px-4">
+              <Search className="size-5 shrink-0 text-muted-foreground" />
+              <input ref={searchInputRef} value={toolQuery} onChange={(event) => setToolQuery(event.target.value)} placeholder="Search video and photo tools…" aria-label="Search video and photo tools" className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground" />
+              <kbd className="hidden rounded-md border border-border bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground sm:block">ESC</kbd>
+            </div>
+            <div className="max-h-[62vh] overflow-y-auto p-2">
+              {filteredTools.length ? filteredTools.map(({ id, label, description, icon: Icon, category }) => (
+                <button key={id} onClick={() => openTool(id)} className="flex min-h-16 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700"><Icon className="size-5" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{label}</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{description}</span></span>
+                  <span className="hidden text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:block">{category}</span>
+                </button>
+              )) : <p className="px-4 py-10 text-center text-sm text-muted-foreground">No tool matches “{toolQuery}”.</p>}
+            </div>
+          </div>
+        </dialog>
+      )}
+
       {mobileToolsOpen && (
         <div id="mobile-tools-menu" className="fixed inset-x-0 top-16 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-border bg-background p-4 shadow-2xl lg:hidden">
           <nav className="mb-5 grid grid-cols-3 gap-2" aria-label="Mobile navigation">
@@ -334,10 +421,37 @@ export default function Home() {
         </aside>
 
         <section className="min-w-0 px-3 py-6 sm:px-7 sm:py-7 lg:px-10 lg:py-9">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <section className="rounded-[26px] border border-violet-100 bg-[linear-gradient(135deg,#f5f1ff_0%,#fff_55%,#eefcf7_100%)] p-5 sm:p-8">
+            <div className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-700">Private media workspace</p>
+                <h1 className="mt-3 max-w-4xl text-[2.15rem] font-bold leading-[1.05] tracking-[-0.055em] sm:text-5xl">Free Online Video &amp; Photo Editor Without Watermark</h1>
+              </div>
+              <button onClick={() => setToolSearchOpen(true)} className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-violet-200 bg-white px-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md" aria-label="Search all EditLocal tools">
+                <Search className="size-4 text-violet-700" /><span className="flex-1 text-sm font-semibold">Search Tools</span><kbd className="rounded-md border border-border bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">Ctrl K</kbd>
+              </button>
+            </div>
+            <p className="mt-5 max-w-4xl text-sm leading-7 text-muted-foreground sm:text-base">Edit, reframe, merge, trim, compress, crop, and convert videos and photos instantly in your browser. <strong className="font-semibold text-foreground">100% free, no watermark, no sign-up required</strong> — your files never leave your device. Works offline after the first load; the editing engine is cached after its first use.</p>
+            <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-semibold"><span className="rounded-full bg-white px-3 py-1.5 text-emerald-700 shadow-sm">15 tools unlocked</span><span className="rounded-full bg-white px-3 py-1.5 text-violet-700 shadow-sm">Local processing</span><span className="rounded-full bg-white px-3 py-1.5 text-foreground shadow-sm">No artificial limits</span></div>
+          </section>
+
+          <section className="mt-8" aria-labelledby="all-dashboard-tools">
+            <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-violet-700">Everything included</p><h2 id="all-dashboard-tools" className="mt-1 text-2xl font-bold tracking-[-0.04em] sm:text-3xl">All video and photo tools</h2></div><button onClick={() => setToolSearchOpen(true)} className="hidden min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-xs font-semibold hover:bg-muted sm:flex"><Search className="size-3.5" /> Find a tool</button></div>
+            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+              {tools.map(({ id, label, description, icon: Icon, category }) => (
+                <article key={id} className="group rounded-2xl border border-border bg-card p-4 transition hover:border-violet-200 hover:shadow-lg">
+                  <div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700"><Icon className="size-5" /></span><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{category}</p><h3 className="mt-0.5 font-bold tracking-tight">{label}</h3></div></div>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">{description}</p>
+                  <div className="mt-4 flex items-center justify-between gap-3"><button onClick={() => openTool(id)} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground">Open editor <ArrowRight className="size-3.5" /></button><Link href={`/tools/${toolSlugs[id]}`} className="rounded-lg px-2 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50">How it works</Link></div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <div id="editor" className="mb-6 mt-12 flex scroll-mt-28 flex-wrap items-end justify-between gap-4">
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">{tool.category} tools <span className="text-border">/</span> {tool.label}</div>
-              <h1 className="text-3xl font-bold tracking-[-0.045em] sm:text-[38px]">{tool.label}</h1>
+              <h2 className="text-3xl font-bold tracking-[-0.045em] sm:text-[38px]">{tool.label}</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-[15px]">{tool.description}</p>
             </div>
             <Badge variant="secondary" className="h-7 gap-1.5 px-2.5"><BadgeCheck className="text-emerald-600" /> Local engine</Badge>
