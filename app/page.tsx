@@ -1,6 +1,8 @@
 'use client';
+/* oxlint-disable next/no-img-element, jsx-a11y/media-has-caption */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Aperture,
   ArrowDownToLine,
@@ -8,14 +10,12 @@ import {
   AudioLines,
   BadgeCheck,
   Check,
-  ChevronDown,
   CircleX,
   Crop,
   Download,
   FileImage,
   Film,
   Gauge,
-  Images,
   Layers3,
   LockKeyhole,
   Maximize2,
@@ -35,7 +35,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress';
+import { Progress, ProgressLabel } from '@/components/ui/progress';
 import { analyzeVideoFocus } from '@/lib/focus-analysis';
 import type { ProcessResult, ToolId } from '@/lib/media-engine';
 
@@ -119,10 +119,10 @@ export default function Home() {
   useEffect(() => {
     const requestedTool = new URLSearchParams(window.location.search).get('tool') as ToolId | null;
     const matchedTool = tools.find((item) => item.id === requestedTool);
-    if (matchedTool) {
+    if (matchedTool) queueMicrotask(() => {
       setActiveTool(matchedTool.id);
       setFormat(matchedTool.category === 'Photo' ? 'JPG' : 'MP4');
-    }
+    });
   }, []);
 
   useEffect(() => {
@@ -264,14 +264,14 @@ export default function Home() {
         >
           <Menu className="size-5" />
         </button>
-        <a href="/" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-[11px] bg-primary text-primary-foreground"><Film className="size-4" /></span>
           <span className="text-[17px] font-bold tracking-[-0.035em]">EditLocal</span>
-        </a>
+        </Link>
         <nav className="ml-10 hidden items-center gap-1 text-sm text-muted-foreground md:flex" aria-label="Primary navigation">
-          <a href="/tools" className="rounded-lg bg-muted px-3 py-1.5 font-medium text-foreground">Tools</a>
+          <Link href="/tools" className="rounded-lg bg-muted px-3 py-1.5 font-medium text-foreground">Tools</Link>
           <button className="rounded-lg px-3 py-1.5 hover:bg-muted hover:text-foreground">Queue</button>
-          <a href="/privacy" className="rounded-lg px-3 py-1.5 hover:bg-muted hover:text-foreground">Privacy</a>
+          <Link href="/privacy" className="rounded-lg px-3 py-1.5 hover:bg-muted hover:text-foreground">Privacy</Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <Badge variant="secondary" className="hidden h-7 px-2.5 text-violet-700 md:flex"><Sparkles /> Free forever</Badge>
@@ -283,9 +283,9 @@ export default function Home() {
       {mobileToolsOpen && (
         <div id="mobile-tools-menu" className="fixed inset-x-0 top-16 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-border bg-background p-4 shadow-2xl lg:hidden">
           <nav className="mb-5 grid grid-cols-3 gap-2" aria-label="Mobile navigation">
-            <a href="/tools" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">All tools</a>
-            <a href="/about" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">About</a>
-            <a href="/privacy" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">Privacy</a>
+            <Link href="/tools" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">All tools</Link>
+            <Link href="/about" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">About</Link>
+            <Link href="/privacy" className="grid min-h-11 place-items-center rounded-xl bg-muted px-3 text-sm font-semibold">Privacy</Link>
           </nav>
           {(['Video', 'Photo'] as const).map((category) => (
             <section key={category} className="mb-5 last:mb-0">
@@ -384,7 +384,7 @@ export default function Home() {
                     }} />
                   )
                 ) : (
-                  <button className="group grid h-full min-h-[320px] w-full place-items-center bg-[linear-gradient(145deg,#282337,#131219)] p-5 text-center text-white" onClick={() => inputRef.current?.click()}>
+                  <button aria-label={`Choose ${tool.multiple ? 'video clips' : isPhoto ? 'an image' : 'a video'}`} className="group grid h-full min-h-[320px] w-full place-items-center bg-[linear-gradient(145deg,#282337,#131219)] p-5 text-center text-white" onClick={() => inputRef.current?.click()}>
                     <span>
                       <span className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl border border-white/10 bg-white/10 transition group-hover:scale-105 group-hover:bg-white/15"><Upload className="size-5" /></span>
                       <span className="block text-sm font-semibold">Drop {tool.multiple ? 'your clips' : isPhoto ? 'an image' : 'a video'} here</span>
@@ -402,7 +402,7 @@ export default function Home() {
                 <span className="max-w-full truncate sm:max-w-[70%]">{files.length ? `${files.length > 1 ? `${files.length} files` : files[0].name} · ${formatSize(files.reduce((sum, file) => sum + file.size, 0))}` : 'Your file never leaves this device'}</span>
                 <span className="hidden items-center gap-1.5 sm:flex"><Maximize2 className="size-3.5" /> Fit preview</span>
               </div>
-              <input ref={inputRef} type="file" multiple={tool.multiple} accept={isPhoto ? 'image/*' : 'video/*'} className="sr-only" onChange={(event) => onFiles(Array.from(event.target.files ?? []))} />
+              <input ref={inputRef} type="file" multiple={tool.multiple} accept={isPhoto ? 'image/*' : 'video/*'} aria-label={`Choose ${tool.multiple ? 'video clips' : isPhoto ? 'an image' : 'a video'}`} className="sr-only" onChange={(event) => onFiles(Array.from(event.target.files ?? []))} />
             </div>
 
             <div className="flex flex-col border-t border-border xl:border-l xl:border-t-0">
@@ -489,7 +489,7 @@ export default function Home() {
 
               <div className="border-t border-border bg-muted/30 p-4 sm:p-7">
                 {busy && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3.5">
-                  <Progress value={progress * 100} className="gap-2"><ProgressLabel>{status === 'analyzing' ? 'Analyzing locally' : 'Rendering locally'}</ProgressLabel><ProgressValue>{Math.round(progress * 100)}%</ProgressValue></Progress>
+                  <Progress value={progress * 100} className="gap-2"><ProgressLabel>{status === 'analyzing' ? 'Analyzing locally' : 'Rendering locally'}</ProgressLabel><span className="ml-auto text-sm tabular-nums text-muted-foreground">{Math.round(progress * 100)}%</span></Progress>
                   <p className="mt-2 text-[11px] leading-5 text-violet-900/70">{statusText}</p>
                 </div>}
                 {status === 'error' && <div className="mb-4 flex gap-2 rounded-xl border border-rose-100 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><CircleX className="mt-0.5 size-4 shrink-0" />{statusText}</div>}

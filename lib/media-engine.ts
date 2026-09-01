@@ -111,7 +111,7 @@ function focusExpression(points: FocusPoint[] | undefined, axis: 'x' | 'y', fall
     const b = sampled[index + 1];
     const duration = Math.max(0.001, b.time - a.time);
     const interpolation = `${a[axis].toFixed(4)}+(${(b[axis] - a[axis]).toFixed(4)})*(t-${a.time.toFixed(3)})/${duration.toFixed(3)}`;
-    expression = `if(lt(t\,${b.time.toFixed(3)})\,${interpolation}\,${expression})`;
+    expression = `if(lt(t\\,${b.time.toFixed(3)})\\,${interpolation}\\,${expression})`;
   }
   return expression;
 }
@@ -126,7 +126,7 @@ function reframeFilter(options: ProcessOptions) {
   }
   const xFocus = focusExpression(options.focusPath, 'x', options.focusX);
   const yFocus = focusExpression(options.focusPath, 'y', options.focusY);
-  return `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}:x='max(0\,min(iw-ow\,iw*(${xFocus})-ow/2))':y='max(0\,min(ih-oh\,ih*(${yFocus})-oh/2))',setsar=1`;
+  return `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}:x='max(0\\,min(iw-ow\\,iw*(${xFocus})-ow/2))':y='max(0\\,min(ih-oh\\,ih*(${yFocus})-oh/2))',setsar=1`;
 }
 
 function codecArgs(extension: string, quality: ProcessOptions['quality']) {
@@ -156,7 +156,7 @@ export async function processMedia(
   const written: string[] = [];
   let output = 'output.mp4';
   let extension = 'mp4';
-  let suffix = options.tool;
+  let suffix: string = options.tool;
   let args: string[] = [];
 
   try {
