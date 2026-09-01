@@ -32,6 +32,7 @@ export async function analyzeVideoFocus(file: File, onProgress?: (value: number)
 
   try {
     if (video.readyState < 1) await waitFor(video, 'loadedmetadata');
+    if (video.readyState < 2) await waitFor(video, 'loadeddata');
     const duration = Number.isFinite(video.duration) ? video.duration : 0;
     const sampleCount = Math.max(8, Math.min(48, Math.ceil(duration * 1.5)));
     const canvas = document.createElement('canvas');

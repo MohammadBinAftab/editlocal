@@ -106,17 +106,27 @@ export function cancelMediaProcess() {
   loaded = false;
 }
 
-function dimensionsFor(ratio: string, quality: ProcessOptions['quality']) {
-  const scale = quality === 'Fast' ? 0.5 : quality === 'Studio' ? 4 / 3 : 1;
+function dimensionsFor(options: ProcessOptions) {
   const dimensions: Record<string, [number, number]> = {
     '9:16': [1080, 1920],
     '16:9': [1920, 1080],
     '1:1': [1080, 1080],
     '4:5': [1080, 1350],
   };
-  const [width, height] = dimensions[ratio] ?? dimensions['9:16'];
+  const [maximumWidth, maximumHeight] = dimensions[options.ratio] ?? dimensions['9:16'];
+  const targetAspect = maximumWidth / maximumHeight;
+  const sourceWidth = Math.max(2, options.sourceWidth);
+  const sourceHeight = Math.max(2, options.sourceHeight);
+  const sourceAspect = sourceWidth / sourceHeight;
+  const cropWidth = sourceAspect > targetAspect ? sourceHeight * targetAspect : sourceWidth;
+  const cropHeight = sourceAspect > targetAspect ? sourceHeight : sourceWidth / targetAspect;
+  const scale = Math.min(
+    options.quality === 'Fast' ? 0.75 : 1,
+    maximumWidth / cropWidth,
+    maximumHeight / cropHeight,
+  );
   const even = (value: number) => Math.max(2, Math.round((value * scale) / 2) * 2);
-  return [even(width), even(height)] as const;
+  return [even(cropWidth), even(cropHeight)] as const;
 }
 
 function focusExpression(points: FocusPoint[] | undefined, axis: 'x' | 'y', fallback: number) {
@@ -135,7 +145,7 @@ function focusExpression(points: FocusPoint[] | undefined, axis: 'x' | 'y', fall
 }
 
 function reframeFilter(options: ProcessOptions) {
-  const [width, height] = dimensionsFor(options.ratio, options.quality);
+  const [width, height] = dimensionsFor(options);
   if (options.framing === 'Background fill') {
     return `split=2[bg][fg];[bg]scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height},boxblur=40:5[blur];[fg]scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos[front];[blur][front]overlay=(W-w)/2:(H-h)/2,setsar=1`;
   }
@@ -147,11 +157,13 @@ function reframeFilter(options: ProcessOptions) {
   return `scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${width}:${height}:x='max(0\\,min(iw-ow\\,iw*(${xFocus})-ow/2))':y='max(0\\,min(ih-oh\\,ih*(${yFocus})-oh/2))',setsar=1`;
 }
 
-function codecArgs(extension: string, quality: ProcessOptions['quality']) {
+function codecArgs(extension: string, quality: ProcessOptions['quality'], compression = false) {
   if (extension === 'webm') {
-    return ['-c:v', 'libvpx-vp9', '-crf', quality === 'Fast' ? '38' : quality === 'Studio' ? '20' : '28', '-b:v', '0', '-c:a', 'libopus'];
+    const crf = compression ? (quality === 'Fast' ? '44' : quality === 'Studio' ? '27' : '35') : (quality === 'Fast' ? '38' : quality === 'Studio' ? '20' : '28');
+    return ['-c:v', 'libvpx-vp9', '-crf', crf, '-b:v', '0', '-c:a', 'libopus'];
   }
-  return ['-c:v', 'libx264', '-preset', quality === 'Studio' ? 'slow' : quality === 'Fast' ? 'ultrafast' : 'medium', '-crf', quality === 'Fast' ? '26' : quality === 'Studio' ? '15' : '18', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
+  const crf = compression ? (quality === 'Fast' ? '30' : quality === 'Studio' ? '18' : '23') : (quality === 'Fast' ? '25' : quality === 'Studio' ? '16' : '19');
+  return ['-c:v', 'libx264', '-preset', quality === 'Studio' ? 'medium' : quality === 'Fast' ? 'ultrafast' : 'veryfast', '-crf', crf, '-c:a', 'aac', '-b:a', compression ? '128k' : '192k', '-movflags', '+faststart'];
 }
 
 function safeExtension(file: File) {
@@ -294,7 +306,6 @@ export async function processMedia(
         if (options.trimEnd > options.trimStart) afterInput.push('-to', options.trimEnd.toFixed(3));
       }
       if (options.tool === 'reframe' || options.tool === 'crop') afterInput.push('-vf', reframeFilter(options));
-      if (options.tool === 'compress') afterInput.push('-crf', options.quality === 'Fast' ? '30' : options.quality === 'Studio' ? '18' : '23');
       if (options.tool === 'speed') {
         afterInput.push('-filter_complex', `[0:v]setpts=${(1 / options.speed).toFixed(4)}*PTS[v];[0:a]atempo=${options.speed.toFixed(3)}[a]`, '-map', '[v]', '-map', '[a]');
       }
@@ -306,7 +317,9 @@ export async function processMedia(
         afterInput.push('-vf', `delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0`);
       }
       if (options.mute) afterInput.push('-an');
-      args = [...beforeInput, '-i', input, ...afterInput, ...codecArgs(extension, options.quality), output];
+      const encodingArgs = codecArgs(extension, options.quality, options.tool === 'compress');
+      args = [...beforeInput, '-i', input, ...afterInput, ...encodingArgs, output];
+      if (options.tool === 'speed') fallbackArgs = ['-i', input, '-vf', `setpts=${(1 / options.speed).toFixed(4)}*PTS`, '-an', ...encodingArgs, output];
     }
 
     let exitCode = await engine.exec(args);

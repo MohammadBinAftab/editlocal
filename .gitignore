@@ -10,6 +10,7 @@
 
 # testing
 /coverage
+/test-assets/
 
 # next.js
 /.next/

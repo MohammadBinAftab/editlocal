@@ -19,7 +19,7 @@ You can also run `./start-editlocal.ps1` from PowerShell. It installs dependenci
 
 ## Included tools
 
-- Motion-and-detail smart reframing for 9:16, 16:9, 1:1, and 4:5
+- Motion-and-detail smart reframing for 9:16, 16:9, 1:1, and 4:5 with adaptive no-upscale output
 - Background fill and full-frame fit modes
 - Video compression, conversion, trim, crop, merge, speed, audio extraction, and GIF creation
 - Green-screen removal with transparent or solid-color output

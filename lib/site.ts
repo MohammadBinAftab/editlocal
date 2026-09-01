@@ -39,13 +39,13 @@ export const seoTools: SeoTool[] = [
     description: 'Convert 16:9 video to 9:16, square, 4:5, or landscape locally. Smart motion-aware reframing, background fill, and no-upload processing.',
     answer: 'EditLocal converts video between 16:9, 9:16, 1:1, and 4:5 directly in your browser. Its smart mode samples motion and visual detail, calculates a smoothed focal path, and renders the chosen composition locally without uploading the source video.',
     keywords: ['video aspect ratio converter', '16:9 to 9:16 converter', 'landscape to portrait video', 'resize video for TikTok', 'convert video for Reels'],
-    features: ['Motion-and-detail focal analysis', 'High-quality Lanczos scaling', 'Smart crop, blurred fill, and full-frame fit', '1080 × 1920 portrait export', 'Manual focal-point override'],
+    features: ['Motion-and-detail focal analysis', 'High-quality Lanczos scaling', 'Smart crop, blurred fill, and full-frame fit', 'Adaptive export up to 1080 × 1920 without artificial upscaling', 'Manual focal-point override'],
     steps: ['Choose a video from your device.', 'Select 9:16, 16:9, 1:1, or 4:5.', 'Choose smart reframe, background fill, or full-frame fit.', 'Review the local preview and export the finished file.'],
     limitations: 'A differently shaped frame cannot simultaneously preserve every source pixel and fill the destination without cropping, padding, deformation, or generated content. EditLocal shows these options explicitly so you control the trade-off.',
     faq: [
       { question: 'Can I convert 16:9 video to 9:16 without cropping?', answer: 'Yes. Choose Fit Entire Video to preserve the complete frame with padding, or Background Fill to keep the full source over a blurred full-screen background.' },
       { question: 'Does EditLocal upload my video?', answer: 'No. Analysis and export run inside your browser. Vercel Analytics may record the page visit after deployment, but it never receives the media file.' },
-      { question: 'Which format is best for Shorts and Reels?', answer: 'A 9:16 frame at 1080 × 1920 is the common full-screen portrait format for YouTube Shorts, Instagram Reels, and TikTok.' },
+      { question: 'Which format is best for Shorts and Reels?', answer: 'A 9:16 frame is the common full-screen portrait format for YouTube Shorts, Instagram Reels, and TikTok. EditLocal exports up to 1080 × 1920, while lower-resolution sources stay at their honest native detail instead of being artificially enlarged.' },
     ],
   },
   {
