@@ -13,6 +13,8 @@ export type ToolId =
   | 'greenscreen'
   | 'voiceover'
   | 'captions'
+  | 'freeze'
+  | 'reverse'
   | 'watermark'
   | 'photo-compress'
   | 'photo-convert'
@@ -50,6 +52,9 @@ export type ProcessOptions = {
   voiceoverVolume: number;
   originalVolume: number;
   captionCues: CaptionCue[];
+  freezeAt: number;
+  freezeDuration: number;
+  reverseAudio: boolean;
 };
 
 export type ProcessResult = {
@@ -246,6 +251,22 @@ export async function processMedia(
       });
       suffix = 'captioned';
       args = ['-i', input, ...captionInputs, '-filter_complex', filters.join(';'), '-map', `[${base}]`, '-map', '0:a?', ...codecArgs('mp4', options.quality), '-shortest', output];
+    } else if (options.tool === 'freeze') {
+      const freezeAt = Math.max(0.05, Math.min(options.freezeAt, Math.max(0.05, options.trimEnd - 0.05)));
+      const hold = Math.max(0.1, options.freezeDuration);
+      const videoGraph = `[0:v]split=2[vbefore][vafter];[vbefore]trim=end=${freezeAt.toFixed(3)},setpts=PTS-STARTPTS[vpre];[vafter]trim=start=${freezeAt.toFixed(3)},setpts=PTS-STARTPTS,tpad=start_mode=clone:start_duration=${hold.toFixed(3)}[vpost];[vpre][vpost]concat=n=2:v=1:a=0[v]`;
+      const audioGraph = `[0:a]asplit=2[abefore][aafter];[abefore]atrim=end=${freezeAt.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[apre];[aafter]atrim=start=${freezeAt.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[apost];anullsrc=r=48000:cl=stereo,atrim=duration=${hold.toFixed(3)},asetpts=PTS-STARTPTS[silence];[apre][silence][apost]concat=n=3:v=0:a=1[a]`;
+      suffix = 'freeze-frame';
+      args = ['-i', input, '-filter_complex', `${videoGraph};${audioGraph}`, '-map', '[v]', '-map', '[a]', ...codecArgs('mp4', options.quality), output];
+      fallbackArgs = ['-i', input, '-filter_complex', videoGraph, '-map', '[v]', '-an', ...codecArgs('mp4', options.quality), output];
+    } else if (options.tool === 'reverse') {
+      suffix = 'reversed';
+      if (options.reverseAudio) {
+        args = ['-i', input, '-filter_complex', '[0:v]reverse[v];[0:a]areverse[a]', '-map', '[v]', '-map', '[a]', ...codecArgs('mp4', options.quality), output];
+        fallbackArgs = ['-i', input, '-vf', 'reverse', '-an', ...codecArgs('mp4', options.quality), output];
+      } else {
+        args = ['-i', input, '-vf', 'reverse', '-an', ...codecArgs('mp4', options.quality), output];
+      }
     } else if (imageTool) {
       extension = options.format === 'Original' ? (safeExtension(files[0]) === 'jpeg' ? 'jpg' : safeExtension(files[0])) : options.format.toLowerCase();
       if (!['png', 'jpg', 'jpeg', 'webp'].includes(extension)) extension = 'jpg';

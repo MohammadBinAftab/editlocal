@@ -27,10 +27,12 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Rewind,
   ScanSearch,
   Search,
   Scissors,
   ShieldCheck,
+  Snowflake,
   Sparkles,
   Upload,
   WandSparkles,
@@ -63,6 +65,8 @@ const tools: ToolDefinition[] = [
   { id: 'crop', label: 'Crop & resize', description: 'Resize for social, presentations or custom screens.', icon: Crop, category: 'Video' },
   { id: 'merge', label: 'Merge videos', description: 'Join compatible clips without uploading them.', icon: Layers3, category: 'Video', multiple: true },
   { id: 'speed', label: 'Change speed', description: 'Speed up or slow down video and audio together.', icon: Gauge, category: 'Video' },
+  { id: 'freeze', label: 'Freeze frame', description: 'Hold one exact frame, then continue the video in sync.', icon: Snowflake, category: 'Video', pro: true },
+  { id: 'reverse', label: 'Reverse video', description: 'Play video backward with optional reversed audio.', icon: Rewind, category: 'Video', pro: true },
   { id: 'audio', label: 'Extract audio', description: 'Save clean MP3 audio from a video.', icon: Music2, category: 'Video' },
   { id: 'gif', label: 'Video to GIF', description: 'Create a smooth looping GIF for sharing.', icon: Play, category: 'Video' },
   { id: 'greenscreen', label: 'Greenscreen', description: 'Key out a green background with edge feathering and spill control.', icon: Sparkles, category: 'Video', pro: true },
@@ -93,6 +97,8 @@ const toolSlugs: Record<ToolId, string> = {
   crop: 'crop-video',
   merge: 'merge-videos',
   speed: 'change-video-speed',
+  freeze: 'freeze-frame-video',
+  reverse: 'reverse-video',
   audio: 'extract-audio-from-video',
   gif: 'video-to-gif',
   greenscreen: 'remove-green-screen-from-video',
@@ -139,6 +145,9 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const [freezeAt, setFreezeAt] = useState(1);
+  const [freezeDuration, setFreezeDuration] = useState(2);
+  const [reverseAudio, setReverseAudio] = useState(true);
   const [resizeWidth, setResizeWidth] = useState(1920);
   const [resizeHeight, setResizeHeight] = useState(1080);
   const [focusX, setFocusX] = useState(0.5);
@@ -384,6 +393,9 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
           voiceoverVolume,
           originalVolume,
           captionCues: validCaptions,
+          freezeAt,
+          freezeDuration,
+          reverseAudio,
         },
         setProgress,
       );
@@ -415,7 +427,7 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
     anchor.click();
   };
 
-  const actionLabel = activeTool === 'reframe' ? 'Analyze & reframe' : activeTool.includes('watermark') ? 'Clean selected area' : activeTool === 'greenscreen' ? 'Remove green screen' : activeTool === 'voiceover' ? 'Add voiceover' : activeTool === 'captions' ? 'Burn captions into video' : `Run ${tool.label.toLowerCase()}`;
+  const actionLabel = activeTool === 'reframe' ? 'Analyze & reframe' : activeTool.includes('watermark') ? 'Clean selected area' : activeTool === 'greenscreen' ? 'Remove green screen' : activeTool === 'voiceover' ? 'Add voiceover' : activeTool === 'captions' ? 'Burn captions into video' : activeTool === 'freeze' ? 'Create freeze frame' : activeTool === 'reverse' ? 'Reverse video' : `Run ${tool.label.toLowerCase()}`;
   const previewIsImage = result ? result.mimeType.startsWith('image/') : isPhoto;
   const previewUrl = resultUrl || sourceUrl;
 
@@ -533,8 +545,8 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
                 <Search className="size-4 text-violet-700" /><span className="flex-1 text-sm font-semibold">Search Tools</span><kbd className="rounded-md border border-border bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">Ctrl K</kbd>
               </button>
             </div>
-            <p className="mt-5 max-w-4xl text-sm leading-7 text-muted-foreground sm:text-base">Edit, reframe, caption, add voiceovers, remove green screens, merge, trim, compress, crop, and convert videos and photos instantly in your browser. <strong className="font-semibold text-foreground">100% free, no watermark, no sign-up required</strong> — your files never leave your device. Works offline after the first load; the editing engine is cached after its first use.</p>
-            <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-semibold"><span className="rounded-full bg-white px-3 py-1.5 text-emerald-700 shadow-sm">18 tools unlocked</span><span className="rounded-full bg-white px-3 py-1.5 text-violet-700 shadow-sm">Local processing</span><span className="rounded-full bg-white px-3 py-1.5 text-foreground shadow-sm">No artificial limits</span></div>
+            <p className="mt-5 max-w-4xl text-sm leading-7 text-muted-foreground sm:text-base">Edit, reframe, freeze or reverse video, add captions and voiceovers, remove green screens, merge, trim, compress, crop, and convert media instantly in your browser. <strong className="font-semibold text-foreground">100% free, no watermark, no sign-up required</strong> — your files never leave your device. Works offline after the first load.</p>
+            <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-semibold"><span className="rounded-full bg-white px-3 py-1.5 text-emerald-700 shadow-sm">20 tools unlocked</span><span className="rounded-full bg-white px-3 py-1.5 text-violet-700 shadow-sm">Local processing</span><span className="rounded-full bg-white px-3 py-1.5 text-foreground shadow-sm">No artificial limits</span></div>
           </section>
 
           <section className={`${focused ? 'hidden' : ''} mt-8`} aria-labelledby="all-dashboard-tools">
@@ -592,6 +604,7 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
                       if (!resultUrl) {
                         setDuration(video.duration || 0);
                         setTrimEnd(video.duration || 0);
+                        setFreezeAt((current) => current > 0 && current < video.duration ? current : Math.max(0.1, video.duration / 2));
                         setSourceWidth(video.videoWidth || 1920);
                         setSourceHeight(video.videoHeight || 1080);
                         setResizeWidth(video.videoWidth || 1920);
@@ -667,6 +680,20 @@ export function MediaApp({ initialTool = 'reframe', focused = false }: MediaAppP
                   <input type="range" min="0.5" max="2" step="0.05" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} className="mt-4 w-full accent-violet-600" />
                   <span className="mt-1 flex justify-between text-[10px] font-normal normal-case tracking-normal text-muted-foreground"><span>0.5×</span><span>Normal</span><span>2×</span></span>
                 </label>}
+
+                {activeTool === 'freeze' && <fieldset>
+                  <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Freeze-frame timing</legend>
+                  <label className="block text-xs font-medium">Freeze at <span className="float-right text-muted-foreground">{freezeAt.toFixed(1)}s</span><input type="range" min="0.1" max={Math.max(0.1, duration - 0.1)} step="0.1" value={Math.min(freezeAt, Math.max(0.1, duration - 0.1))} disabled={!duration} onChange={(event) => setFreezeAt(Number(event.target.value))} className="mt-3 w-full accent-violet-600 disabled:opacity-40" /></label>
+                  <label className="mt-5 block text-xs font-medium">Hold frame for <span className="float-right text-muted-foreground">{freezeDuration.toFixed(1)}s</span><input type="range" min="0.5" max="10" step="0.5" value={freezeDuration} onChange={(event) => setFreezeDuration(Number(event.target.value))} className="mt-3 w-full accent-violet-600" /></label>
+                  <div className="mt-4 grid grid-cols-2 gap-3"><label className="text-[11px] text-muted-foreground">Exact timestamp<input type="number" min="0.1" max={Math.max(0.1, duration - 0.1)} step="0.1" value={Number(freezeAt.toFixed(1))} onChange={(event) => setFreezeAt(Number(event.target.value))} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground" /></label><label className="text-[11px] text-muted-foreground">Hold duration<input type="number" min="0.1" max="30" step="0.1" value={Number(freezeDuration.toFixed(1))} onChange={(event) => setFreezeDuration(Number(event.target.value))} className="mt-1.5 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground" /></label></div>
+                  <p className="mt-3 text-[11px] leading-5 text-muted-foreground">The selected frame is held in place, matching silence is inserted, and the remaining video continues afterward.</p>
+                </fieldset>}
+
+                {activeTool === 'reverse' && <fieldset>
+                  <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Reverse options</legend>
+                  <label htmlFor="reverse-audio" className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background p-4"><input id="reverse-audio" aria-label="Reverse audio too" type="checkbox" checked={reverseAudio} onChange={(event) => setReverseAudio(event.target.checked)} className="mt-0.5 size-4 accent-violet-600" /><span><span className="block text-sm font-semibold">Reverse audio too</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">Turn this off for a silent reversed video. Videos without audio automatically use silent output.</span></span></label>
+                  <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-[11px] leading-5 text-amber-900">Reversing requires the browser to hold decoded frames in memory. Short clips work fastest; trim long videos first for smoother processing.</div>
+                </fieldset>}
 
                 {activeTool === 'greenscreen' && <fieldset>
                   <legend className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Chroma key</legend>

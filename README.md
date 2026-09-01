@@ -25,6 +25,8 @@ You can also run `./start-editlocal.ps1` from PowerShell. It installs dependenci
 - Green-screen removal with transparent or solid-color output
 - Recorded or uploaded voiceovers with zero-loss video stream copying when compatible
 - Multiple timed text captions with mobile-friendly styling controls
+- Synchronized freeze-frame effects at an exact timestamp
+- Full video reversal with optional reversed audio
 - Image compression, conversion, resizing, cropping, and visible-overlay cleanup
 - Authorized visible-watermark cleanup for video and photos
 - Fast, High, and Maximum quality settings, all included for everyone
