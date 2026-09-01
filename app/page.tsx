@@ -460,7 +460,7 @@ export default function Home() {
 
               <div className="border-t border-border bg-muted/30 p-5 sm:p-7">
                 {busy && <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 p-3.5">
-                  <Progress value={progress * 100} className="gap-2"><ProgressLabel>{status === 'analyzing' ? 'Analyzing locally' : 'Rendering locally'}</ProgressLabel><ProgressValue>{Math.round(progress * 100)}%</ProgressValue></Progress>
+                  <Progress value={progress * 100} className="gap-2"><ProgressLabel>{status === 'analyzing' ? 'Analyzing locally' : 'Rendering locally'}</ProgressLabel><ProgressValue>{() => `${Math.round(progress * 100)}%`}</ProgressValue></Progress>
                   <p className="mt-2 text-[11px] leading-5 text-violet-900/70">{statusText}</p>
                 </div>}
                 {status === 'error' && <div className="mb-4 flex gap-2 rounded-xl border border-rose-100 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><CircleX className="mt-0.5 size-4 shrink-0" />{statusText}</div>}

@@ -156,7 +156,7 @@ export async function processMedia(
   const written: string[] = [];
   let output = 'output.mp4';
   let extension = 'mp4';
-  let suffix = options.tool;
+  let suffix: string = options.tool;
   let args: string[] = [];
 
   try {
