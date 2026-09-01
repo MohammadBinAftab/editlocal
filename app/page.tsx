@@ -236,13 +236,18 @@ export default function Home() {
     }
     setFormat(next.category === 'Photo' ? 'JPG' : 'MP4');
     setMobileToolsOpen(false);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById('editor')?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }));
   };
 
   const openTool = (id: ToolId) => {
     chooseTool(id);
     setToolSearchOpen(false);
     setToolQuery('');
-    requestAnimationFrame(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   const onFiles = (selected: File[]) => {
